@@ -814,20 +814,26 @@ class AdminHandlers:
                             continue
 
                         try:
+                            # Safely truncate and escape user message to prevent Markdown parsing errors
+                            safe_message = approved_message.original_message[:100]
+                            if len(approved_message.original_message) > 100:
+                                safe_message += '...'
+                            safe_message = escape_markdown_v2(safe_message)
+
                             send_notification = (
                                 f"🔔 **Уведомление об отправке сообщения**\n\n"
-                                f"📝 Сообщение: {message_id}\n"
-                                f"👤 Админ: @{admin_username}\n"
-                                f"👥 Пользователь: {approved_message.username}\n"
+                                f"📝 Сообщение: {escape_markdown_v2(message_id)}\n"
+                                f"👤 Админ: @{escape_markdown_v2(admin_username)}\n"
+                                f"👥 Пользователь: {escape_markdown_v2(approved_message.username)}\n"
                                 f"🕐 Отправлено: {moscow_time}\n"
-                                f"💬 Вопрос: {approved_message.original_message[:100]}{'...' if len(approved_message.original_message) > 100 else ''}\n\n"
+                                f"💬 Вопрос: {safe_message}\n\n"
                                 f"✅ Сообщение одобрено и отправлено пользователю"
                             )
 
                             await self.bot_application.bot.send_message(
                                 chat_id=int(admin_id),
                                 text=send_notification,
-                                parse_mode='Markdown'
+                                parse_mode='MarkdownV2'
                             )
                             notification_count += 1
                             logger.info(f"🔔 Уведомление об отправке отправлено админу {admin_id}")
@@ -926,20 +932,26 @@ class AdminHandlers:
                     if admin_id == str(query.from_user.id):
                         continue
                     try:
+                        # Safely truncate and escape user message to prevent Markdown parsing errors
+                        safe_message = rejected_message.original_message[:100]
+                        if len(rejected_message.original_message) > 100:
+                            safe_message += '...'
+                        safe_message = escape_markdown_v2(safe_message)
+
                         reject_notification = (
                             f"🔔 **Уведомление об отклонении сообщения**\n\n"
-                            f"📝 Сообщение: {message_id}\n"
-                            f"👤 Админ: @{admin_username}\n"
-                            f"👥 Пользователь: {rejected_message.username}\n"
+                            f"📝 Сообщение: {escape_markdown_v2(message_id)}\n"
+                            f"👤 Админ: @{escape_markdown_v2(admin_username)}\n"
+                            f"👥 Пользователь: {escape_markdown_v2(rejected_message.username)}\n"
                             f"🕐 Отклонено: {moscow_time}\n"
-                            f"💬 Вопрос: {rejected_message.original_message[:100]}{'...' if len(rejected_message.original_message) > 100 else ''}\n\n"
+                            f"💬 Вопрос: {safe_message}\n\n"
                             f"❌ Сообщение отклонено и не будет отправлено пользователю"
                         )
 
                         await self.bot_application.bot.send_message(
                             chat_id=int(admin_id),
                             text=reject_notification,
-                            parse_mode='Markdown'
+                            parse_mode='MarkdownV2'
                         )
                         notification_count += 1
                         logger.info(f"🔔 Уведомление об отклонении отправлено админу {admin_id}")
