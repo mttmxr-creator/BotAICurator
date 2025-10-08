@@ -12,13 +12,29 @@ from typing import Dict, List, Optional
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from telegram.helpers import escape_markdown as escape_markdown_v2
 from openai import AsyncOpenAI
+import re
 
 from config import Config
 from services.moderation_service import get_moderation_queue, ModerationQueue
 from services.correction_service import CorrectionService
 from services.whisper_service import get_whisper_service
+
+def escape_markdown_v2(text: str) -> str:
+    """
+    Escape special characters for Telegram MarkdownV2.
+
+    MarkdownV2 requires escaping these characters:
+    _ * [ ] ( ) ~ ` > # + - = | { } . !
+    """
+    if not text:
+        return ""
+
+    # List of characters that need to be escaped in MarkdownV2
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+
+    # Escape each special character with backslash
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
 def get_moscow_time() -> str:
     """Get current time in Moscow timezone (MSK)."""
