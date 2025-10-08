@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.helpers import escape_markdown as escape_markdown_v2
 from openai import AsyncOpenAI
 
 from config import Config
