@@ -129,18 +129,26 @@ class OpenAIService:
                 assistant_id=self.assistant_id
             )
 
-            # Wait for completion
+            # Wait for completion with polling interval
+            logger.info(f"   ⏳ Waiting for main assistant response (run_id: {run.id})")
+            poll_count = 0
             while run.status in ['queued', 'in_progress', 'cancelling']:
+                poll_count += 1
+                logger.info(f"   💤 Sleep 5 seconds before status check #{poll_count} (current status: {run.status})")
+                await asyncio.sleep(5)
+
                 run = await self.rate_limiter.retry_with_exponential_backoff(
                     self.client.beta.threads.runs.retrieve,
                     thread_id=thread_id,
                     run_id=run.id
                 )
+                logger.info(f"   📊 Status check #{poll_count}: {run.status}")
 
                 if run.status == 'completed':
+                    logger.info(f"   ✅ Main assistant completed after {poll_count} checks (~{poll_count * 5} seconds)")
                     break
                 elif run.status in ['cancelled', 'expired', 'failed']:
-                    logger.error(f"Run failed with status: {run.status}")
+                    logger.error(f"❌ Run failed with status: {run.status}")
                     return None
 
             # Get assistant's response (with rate limiting)
