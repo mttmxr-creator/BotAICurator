@@ -111,10 +111,12 @@ class ValidationService:
             Assistant's validation response if successful, None otherwise
         """
         try:
-            logger.debug("📤 SENDING TO VALIDATION ASSISTANT:")
-            logger.debug(f"   💬 Message length: {len(message)} chars")
-            logger.debug(f"   📄 Validation prompt preview (first 200 chars):")
-            logger.debug(f"   {message[:200]}{'...' if len(message) > 200 else ''}")
+            validation_start_time = time.time()
+            logger.info("📤 SENDING TO VALIDATION ASSISTANT:")
+            logger.info(f"   💬 Message length: {len(message)} chars")
+            logger.info(f"   📄 Validation prompt preview (first 200 chars):")
+            logger.info(f"   {message[:200]}{'...' if len(message) > 200 else ''}")
+            logger.info(f"   🕐 Validation started at: {time.strftime('%H:%M:%S')}")
 
             # Add message to thread (with rate limiting)
             await self.rate_limiter.retry_with_exponential_backoff(
@@ -130,19 +132,25 @@ class ValidationService:
                 thread_id=thread_id,
                 assistant_id=self.validation_assistant_id
             )
+            logger.info(f"   🚀 Validation run created: {run.id}")
 
             # Wait for completion with polling interval
+            logger.info(f"   ⏳ Waiting for validation assistant response (run_id: {run.id})")
+            poll_count = 0
             while run.status in ['queued', 'in_progress', 'cancelling']:
-                # Add 3 second delay between status checks to avoid rate limiting
-                await asyncio.sleep(3)
+                poll_count += 1
+                logger.info(f"   💤 Sleep 5 seconds before status check #{poll_count} (current status: {run.status})")
+                await asyncio.sleep(5)
 
                 run = await self.rate_limiter.retry_with_exponential_backoff(
                     self.client.beta.threads.runs.retrieve,
                     thread_id=thread_id,
                     run_id=run.id
                 )
+                logger.info(f"   📊 Status check #{poll_count}: {run.status}")
 
                 if run.status == 'completed':
+                    logger.info(f"   ✅ Validation completed after {poll_count} checks (~{poll_count * 5} seconds)")
                     break
                 elif run.status in ['cancelled', 'expired', 'failed']:
                     logger.error(f"❌ Validation run failed with status: {run.status}")
@@ -160,17 +168,22 @@ class ValidationService:
                     if message.role == "assistant":
                         if message.content and message.content[0].type == "text":
                             response = message.content[0].text.value
+                            validation_duration = time.time() - validation_start_time
 
-                            logger.debug("📥 RECEIVED FROM VALIDATION ASSISTANT:")
-                            logger.debug(f"   💬 Validation response: {response}")
+                            logger.info("📥 RECEIVED FROM VALIDATION ASSISTANT:")
+                            logger.info(f"   💬 Validation response: {response}")
+                            logger.info(f"   ⏱️ Total validation time: {validation_duration:.2f} seconds")
+                            logger.info(f"   🕐 Validation finished at: {time.strftime('%H:%M:%S')}")
 
                             return response
 
-            logger.warning("❌ No response from validation assistant")
+            validation_duration = time.time() - validation_start_time
+            logger.warning(f"❌ No response from validation assistant (took {validation_duration:.2f}s)")
             return None
 
         except Exception as e:
-            logger.error(f"❌ Error sending message to validation assistant: {e}")
+            validation_duration = time.time() - validation_start_time
+            logger.error(f"❌ Error sending message to validation assistant: {e} (took {validation_duration:.2f}s)")
             return None
 
     async def validate_message(self, message: str) -> bool:
