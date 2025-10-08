@@ -73,8 +73,8 @@ class CorrectionService:
             poll_count = 0
             while run.status in ['queued', 'in_progress', 'cancelling']:
                 poll_count += 1
-                logger.info(f"   💤 Sleep 5 seconds before status check #{poll_count} (current status: {run.status})")
-                await asyncio.sleep(5)
+                logger.info(f"   💤 Sleep 7 seconds before status check #{poll_count} (current status: {run.status})")
+                await asyncio.sleep(7)
 
                 run = await self.client.beta.threads.runs.retrieve(
                     thread_id=thread_id,
@@ -83,7 +83,7 @@ class CorrectionService:
                 logger.info(f"   📊 Status check #{poll_count}: {run.status}")
 
                 if run.status == 'completed':
-                    logger.info(f"   ✅ Correction assistant completed after {poll_count} checks (~{poll_count * 5} seconds)")
+                    logger.info(f"   ✅ Correction assistant completed after {poll_count} checks (~{poll_count * 7} seconds)")
                     break
                 elif run.status in ['cancelled', 'expired', 'failed']:
                     logger.error(f"❌ Correction run failed with status: {run.status}")
