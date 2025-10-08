@@ -131,8 +131,11 @@ class ValidationService:
                 assistant_id=self.validation_assistant_id
             )
 
-            # Wait for completion
+            # Wait for completion with polling interval
             while run.status in ['queued', 'in_progress', 'cancelling']:
+                # Add 1 second delay between status checks to avoid rate limiting
+                await asyncio.sleep(1)
+
                 run = await self.rate_limiter.retry_with_exponential_backoff(
                     self.client.beta.threads.runs.retrieve,
                     thread_id=thread_id,
