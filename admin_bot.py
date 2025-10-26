@@ -567,7 +567,7 @@ class AdminHandlers:
                 logger.info(f"🔄 HIDE_FULL parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
             elif callback_data.startswith('return_to_manual_edit_'):
                 action = 'return_to_manual_edit'
-                message_id = callback_data[23:]  # Remove 'return_to_manual_edit_' prefix
+                message_id = callback_data[22:]  # Remove 'return_to_manual_edit_' prefix (22 chars)
                 logger.info(f"🔄 RETURN_TO_MANUAL_EDIT parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
             elif callback_data.startswith('return_to_edit_'):
                 action = 'return_to_edit'
@@ -1581,12 +1581,18 @@ class AdminHandlers:
 
             # Execute the clear operation
             cleared_count = self.moderation_queue.clear_all_pending()
+
+            # Clear all active editing sessions
+            sessions_cleared = len(self.correction_states)
+            self.correction_states.clear()
+
             moscow_time = get_moscow_time()
 
             # Show success message
             success_text = (
                 f"✅ **ОЧЕРЕДЬ МОДЕРАЦИИ ОЧИЩЕНА** {moscow_time}\n\n"
                 f"🗑️ Удалено сообщений: **{cleared_count}**\n"
+                f"🧹 Очищено активных сессий редактирования: **{sessions_cleared}**\n"
                 f"👤 Выполнил: @{admin_username}\n\n"
                 f"📭 Очередь модерации теперь пуста"
             )
@@ -1603,6 +1609,7 @@ class AdminHandlers:
                     clear_notification = (
                         f"🧹 **Очередь модерации очищена** {moscow_time}\n\n"
                         f"🗑️ Удалено: **{cleared_count}** сообщений\n"
+                        f"🧹 Очищено сессий редактирования: **{sessions_cleared}**\n"
                         f"👤 Выполнил: @{admin_username}\n\n"
                         f"📭 Очередь модерации пуста"
                     )
