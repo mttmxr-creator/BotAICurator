@@ -176,7 +176,7 @@ class MessageHandlers:
 
         Args:
             response: AI-generated response
-            user_info: Dictionary containing user context (chat_id, user_id, username)
+            user_info: Dictionary containing user context (chat_id, user_id, username, chat_title)
             original_message: Original user message text
             original_message_id: Telegram message ID to reply to (for group chats)
 
@@ -188,6 +188,7 @@ class MessageHandlers:
             chat_id = user_info.get('chat_id')
             user_id = user_info.get('user_id')
             username = user_info.get('username')
+            chat_title = user_info.get('chat_title')
 
             # Send to moderation queue
             message_id = add_to_moderation_queue(
@@ -196,7 +197,8 @@ class MessageHandlers:
                 username=username,
                 original_message=original_message,
                 ai_response=response,
-                original_message_id=original_message_id
+                original_message_id=original_message_id,
+                chat_title=chat_title
             )
 
             logger.info(f"📤 Response sent to moderation queue:")
@@ -391,7 +393,8 @@ class MessageHandlers:
             user_info = {
                 'chat_id': update.effective_chat.id,
                 'user_id': update.message.from_user.id,
-                'username': update.message.from_user.username or update.message.from_user.first_name
+                'username': update.message.from_user.username or update.message.from_user.first_name,
+                'chat_title': update.effective_chat.title or 'Личные сообщения'
             }
 
             # Log successful QA interaction (only if valid context was found)

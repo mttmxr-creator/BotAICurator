@@ -736,8 +736,11 @@ class AdminHandlers:
                 'original_message': message
             }
 
+            chat_title = message.chat_title or "Личные сообщения"
+
             edit_text = (
                 f"✏️ Режим корректировки активирован для сообщения {message_id}\n\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {message.username}\n"
                 f"💬 Вопрос: {message.original_message}\n\n"
                 f"🤖 Текущий ответ:\n{message.ai_response}\n\n"
@@ -919,8 +922,11 @@ class AdminHandlers:
                 'original_message': message
             }
 
+            chat_title = message.chat_title or "Личные сообщения"
+
             edit_text = (
                 f"✍️ **Режим ручного редактирования активирован** для сообщения {message_id}\n\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {message.username}\n"
                 f"💬 Вопрос: {message.original_message}\n\n"
                 f"🤖 Текущий ответ ИИ:\n{message.ai_response}\n\n"
@@ -1261,8 +1267,11 @@ class AdminHandlers:
 
             logger.info(f"📢 Cancel notifications sent to {notification_count}/{len(Config.ADMIN_CHAT_IDS)} admins")
 
+            chat_title = message.chat_title or "Личные сообщения"
+
             cancel_text = (
                 f"❌ Редактирование отменено для сообщения {message_id}\n\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {message.username}\n"
                 f"💬 Вопрос: {message.original_message[:200]}...\n\n"
                 f"🤖 Ответ:\n{message.ai_response[:300]}..."
@@ -1297,12 +1306,14 @@ class AdminHandlers:
 
             moscow_time = get_moscow_time()
             username = message.username or "Unknown"
+            chat_title = message.chat_title or "Личные сообщения"
 
             # Create full message display (with length limits for Telegram)
             max_length = 3500  # Safe limit for Telegram messages
 
             full_text = (
                 f"📖 Полное сообщение (ID: {message_id})\n\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {username}\n"
                 f"⏰ Время: {moscow_time}\n\n"
                 f"💬 ВОПРОС:\n{message.original_message}\n\n"
@@ -1357,11 +1368,13 @@ class AdminHandlers:
             # Create compact format (like in pending_command)
             moscow_time = get_moscow_time()
             username = message.username or "Unknown"
+            chat_title = message.chat_title or "Личные сообщения"
             text_preview = message.original_message[:100] + "..." if len(message.original_message) > 100 else message.original_message
             ai_response_preview = message.ai_response[:100] + "..." if len(message.ai_response) > 100 else message.ai_response
 
             compact_text = (
                 f"🆔 ID: {message_id}\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {username}\n"
                 f"⏰ Время: {moscow_time}\n"
                 f"💬 Вопрос: {text_preview}\n"
@@ -1723,8 +1736,11 @@ class AdminHandlers:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
+            chat_title = message.chat_title or "Личные сообщения"
+
             correction_result = (
                 f"✅ **Ручное редактирование завершено** для сообщения {message_id}\n\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {message.username}\n"
                 f"💬 Вопрос: {message.original_message}\n\n"
                 f"📝 **Ваш исправленный текст:**\n{correction_text[:1000]}{'...' if len(correction_text) > 1000 else ''}\n\n"
@@ -2272,11 +2288,13 @@ class AdminBot:
 
             moscow_time = get_moscow_time()
             username = message.username or "Unknown"
+            chat_title = message.chat_title or "Личные сообщения"
             text_preview = message.original_message[:100] + "..." if len(message.original_message) > 100 else message.original_message
             ai_response_preview = message.ai_response[:100] + "..." if len(message.ai_response) > 100 else message.ai_response
 
             restored_message_text = (
                 f"🆔 ID: {message_id}\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {username}\n"
                 f"⏰ Время: {moscow_time}\n"
                 f"💬 Вопрос: {text_preview}\n"

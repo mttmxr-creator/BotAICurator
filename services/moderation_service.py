@@ -104,11 +104,15 @@ class SmartReminder:
             urgency = self.get_urgency_text(msg.reminder_count)
             queue_time_str = self.format_queue_time(time_in_queue)
 
+            # Format chat title display
+            chat_display = f"📱 Чат: {msg.chat_title}\n" if msg.chat_title else ""
+
             reminder_text = (
                 f"{urgency}\n"
                 f"🆔 ID: {msg.message_id}\n"
                 f"⏳ В очереди: {queue_time_str}\n"
                 f"🔄 Напоминание: {msg.reminder_count}/4\n\n"
+                f"{chat_display}"
                 f"💬 От: {msg.username}\n"
                 f"📝 Вопрос: {msg.original_message[:100]}..."
             )
@@ -175,6 +179,7 @@ class ModerationMessage:
     original_message: str
     ai_response: str
     timestamp: datetime
+    chat_title: Optional[str] = None  # Title of the group chat where message came from
     original_message_id: Optional[int] = None  # Telegram message ID to reply to
     status: str = "pending"  # pending, processing, approved, rejected, expired
     rejection_reason: Optional[str] = None
@@ -223,6 +228,7 @@ class ModerationMessage:
         data.setdefault('editing_admin_id', None)
         data.setdefault('editing_admin_name', None)
         data.setdefault('editing_started_at', None)
+        data.setdefault('chat_title', None)  # For backward compatibility
         return cls(**data)
 
     def is_expired(self) -> bool:
@@ -584,6 +590,7 @@ class ModerationQueue:
             original_message=message_data['original_message'],
             ai_response=message_data['ai_response'],
             timestamp=now,
+            chat_title=message_data.get('chat_title'),
             original_message_id=message_data.get('original_message_id'),
             expires_at=now + timeout
         )
@@ -970,7 +977,8 @@ def get_moderation_queue() -> ModerationQueue:
 
 def add_to_moderation_queue(chat_id: int, user_id: int, username: str,
                            original_message: str, ai_response: str,
-                           original_message_id: Optional[int] = None) -> str:
+                           original_message_id: Optional[int] = None,
+                           chat_title: Optional[str] = None) -> str:
     """
     Convenience function to add a message to moderation queue.
 
@@ -981,6 +989,7 @@ def add_to_moderation_queue(chat_id: int, user_id: int, username: str,
         original_message: Original user message text
         ai_response: AI-generated response
         original_message_id: Telegram message ID to reply to (for group chats)
+        chat_title: Title of the group chat where message came from
 
     Returns:
         Message ID for tracking
@@ -992,7 +1001,8 @@ def add_to_moderation_queue(chat_id: int, user_id: int, username: str,
         'username': username,
         'original_message': original_message,
         'ai_response': ai_response,
-        'original_message_id': original_message_id
+        'original_message_id': original_message_id,
+        'chat_title': chat_title
     }
     return queue.add_to_queue(message_data)
 
