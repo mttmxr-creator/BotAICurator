@@ -89,10 +89,14 @@ class AdminHandlers:
         keyboard = [
             [
                 InlineKeyboardButton("✅ Отправить", callback_data=f"send_{message_id}"),
-                InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}"),
-                InlineKeyboardButton("✏️ Редактировать", callback_data=f"edit_{message_id}")
+                InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}")
             ],
             [
+                InlineKeyboardButton("🤖 ИИ-редактирование", callback_data=f"edit_{message_id}"),
+                InlineKeyboardButton("✍️ Ручное редактирование", callback_data=f"manual_edit_{message_id}")
+            ],
+            [
+                InlineKeyboardButton("📋 Копировать", callback_data=f"copy_{message_id}"),
                 InlineKeyboardButton("📖 Показать полное сообщение", callback_data=f"show_full_{message_id}")
             ]
         ]
@@ -549,6 +553,10 @@ class AdminHandlers:
                 action = 'cancel_edit'
                 message_id = callback_data[12:]  # Remove 'cancel_edit_' prefix
                 logger.info(f"🔄 CANCEL_EDIT parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
+            elif callback_data.startswith('manual_edit_'):
+                action = 'manual_edit'
+                message_id = callback_data[12:]  # Remove 'manual_edit_' prefix
+                logger.info(f"🔄 MANUAL_EDIT parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
             elif callback_data.startswith('show_full_'):
                 action = 'show_full'
                 message_id = callback_data[10:]  # Remove 'show_full_' prefix
@@ -575,6 +583,10 @@ class AdminHandlers:
 
             if action == "edit":
                 await self.handle_edit_callback(query, message_id)
+            elif action == "manual_edit":
+                await self.handle_manual_edit_callback(query, message_id)
+            elif action == "copy":
+                await self.handle_copy_callback(query, message_id)
             elif action == "send":
                 await self.handle_send_callback(query, message_id)
             elif action == "reject":
@@ -764,6 +776,176 @@ class AdminHandlers:
             except Exception as reload_error:
                 logger.error(f"❌ Failed to reload queue during error recovery: {reload_error}")
                 await query.edit_message_text("❌ Ошибка при подготовке редактирования")
+
+    async def handle_copy_callback(self, query, message_id: str):
+        """Handle copy button callback - send AI response text for easy copying."""
+        try:
+            message = self.moderation_queue.get_from_queue(message_id)
+            if not message:
+                await query.answer("❌ Сообщение не найдено", show_alert=True)
+                return
+
+            # Send the AI response as a new message for easy copying
+            copy_text = (
+                f"📋 **Текст для копирования** (ID: {message_id})\n\n"
+                f"{message.ai_response}"
+            )
+
+            # Send as new message instead of editing
+            await self.bot_application.bot.send_message(
+                chat_id=query.from_user.id,
+                text=copy_text,
+                parse_mode='Markdown'
+            )
+
+            await query.answer("📋 Текст отправлен отдельным сообщением для копирования", show_alert=False)
+            logger.info(f"📋 Copy callback: sent AI response for message {message_id} to admin {query.from_user.id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error in copy callback: {e}")
+            await query.answer("❌ Ошибка при копировании текста", show_alert=True)
+
+    async def handle_manual_edit_callback(self, query, message_id: str):
+        """Handle manual edit button callback - allow admin to send their own corrected text."""
+        try:
+            admin_user_id = query.from_user.id
+            admin_username = query.from_user.username or query.from_user.first_name
+
+            logger.info(f"✍️ MANUAL_EDIT_START: message_id='{message_id}', admin={admin_username} (ID: {admin_user_id})")
+
+            # Check if admin already has an active correction session
+            if admin_user_id in self.correction_states:
+                active_msg_id = self.correction_states[admin_user_id].get('message_id')
+                logger.warning(f"⚠️ Admin {admin_user_id} already has active correction for message {active_msg_id}")
+
+                warning_text = (
+                    f"⚠️ У вас уже есть активная сессия редактирования!\n\n"
+                    f"📝 В процессе редактирования: сообщение **{active_msg_id}**\n\n"
+                    f"🔄 Сначала завершите правки по текущему сообщению,\n"
+                    f"а затем начните редактирование нового.\n\n"
+                    f"💡 **Инструкции:**\n"
+                    f"• Отправьте корректировку для сообщения **{active_msg_id}**\n"
+                    f"• Или нажмите \"❌ Отменить\" в текущем сообщении\n"
+                    f"• Для просмотра всех задач: /pending"
+                )
+                await query.edit_message_text(warning_text, parse_mode='Markdown')
+                return
+
+            # Get message from queue
+            message = self.moderation_queue.get_from_queue(message_id)
+            if not message:
+                logger.error(f"❌ MANUAL_EDIT_FAILED: message '{message_id}' not found in queue")
+                await query.edit_message_text(f"❌ Сообщение {message_id} не найдено")
+                return
+
+            # Check editing lock with timeout
+            if message.editing_admin_id and message.editing_admin_id != admin_user_id:
+                if time.time() - message.editing_started_at < 600:
+                    await query.answer(f"⚠️ Редактирует @{message.editing_admin_name}")
+                    return
+                else:
+                    # Remove expired lock
+                    message.editing_admin_id = None
+                    message.editing_admin_name = None
+                    message.editing_started_at = None
+
+            # Set editing lock
+            message.editing_admin_id = admin_user_id
+            message.editing_admin_name = admin_username
+            message.editing_started_at = time.time()
+
+            # Lock message for manual editing
+            message.lock_for_editing(admin_user_id, admin_username)
+            self.moderation_queue._save_data()
+
+            # Update all other admins' interfaces (remove buttons)
+            for admin_id in Config.ADMIN_CHAT_IDS:
+                if admin_id != str(admin_user_id):  # Skip the admin who is editing
+                    try:
+                        # Get stored message ID for this admin
+                        if hasattr(self, 'admin_messages') and message_id in self.admin_messages and admin_id in self.admin_messages[message_id]:
+                            telegram_msg_id = self.admin_messages[message_id][admin_id]
+                            # Remove buttons from other admins
+                            await self.bot_application.bot.edit_message_reply_markup(
+                                chat_id=int(admin_id),
+                                message_id=telegram_msg_id,
+                                reply_markup=None
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to update admin {admin_id}: {e}")
+
+            # Send notification to ALL admins about manual edit start
+            notification_count = 0
+            moscow_time = get_moscow_time()
+
+            for admin_id in Config.ADMIN_CHAT_IDS:
+                # Skip notification to the admin who started editing (no self-notification)
+                if admin_id == str(admin_user_id):
+                    continue
+
+                try:
+                    edit_notification = (
+                        f"🔔 **Уведомление о начале ручного редактирования**\n\n"
+                        f"📝 Сообщение: {message_id}\n"
+                        f"👤 Админ: @{admin_username}\n"
+                        f"🕐 Начато: {moscow_time}\n"
+                        f"💬 Вопрос: {message.original_message[:100]}{'...' if len(message.original_message) > 100 else ''}\n\n"
+                        f"ℹ️ Сообщение заблокировано для ручного редактирования"
+                    )
+
+                    await self.bot_application.bot.send_message(
+                        chat_id=int(admin_id),
+                        text=edit_notification,
+                        parse_mode='Markdown'
+                    )
+                    notification_count += 1
+                    logger.info(f"🔔 Уведомление о начале ручного редактирования отправлено админу {admin_id}")
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to notify admin {admin_id} about manual edit start: {e}")
+
+            logger.info(f"🔔 MANUAL_EDIT_START notifications sent to {notification_count} admins")
+
+            # Update all admin messages to show it's being edited
+            if self.admin_bot:
+                await self.admin_bot.update_all_admin_messages(message_id, "manual_edit", admin_username)
+                # Start edit timeout tracking
+                self.admin_bot.start_edit_timeout(message_id, admin_user_id, admin_username)
+
+            # Set correction state for manual editing
+            self.correction_states[admin_user_id] = {
+                'message_id': message_id,
+                'step': 'waiting_manual_correction',  # Different step for manual editing
+                'original_message': message
+            }
+
+            edit_text = (
+                f"✍️ **Режим ручного редактирования активирован** для сообщения {message_id}\n\n"
+                f"👤 Пользователь: {message.username}\n"
+                f"💬 Вопрос: {message.original_message}\n\n"
+                f"🤖 Текущий ответ ИИ:\n{message.ai_response}\n\n"
+                f"📝 **Отправьте ваш исправленный текст** в следующем сообщении.\n"
+                f"После отправки вы увидите превью с возможностью:\n"
+                f"• Отправить пользователю\n"
+                f"• Продолжить редактирование\n"
+                f"• Отклонить\n\n"
+                f"💡 **Подсказка:** используйте кнопку \"📋 Копировать\" для получения текста ИИ"
+            )
+
+            # Create cancel keyboard
+            keyboard = [
+                [
+                    InlineKeyboardButton("❌ Отменить редактирование", callback_data=f"cancel_edit_{message_id}")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.edit_message_text(edit_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✍️ Manual edit activated for message {message_id} by admin {admin_user_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error in manual edit handler: {e}")
+            await query.edit_message_text("❌ Ошибка при активации ручного редактирования")
 
     async def handle_send_callback(self, query, message_id: str):
         """Handle send button callback - approve and send message to user."""
@@ -1501,6 +1683,74 @@ class AdminHandlers:
             logger.error(f"❌ Error processing correction: {e}")
             await update.message.reply_text("❌ Ошибка при обработке корректировки")
 
+    async def process_manual_correction(self, admin_user_id: int, correction_text: str, update: Update):
+        """Process manual correction input from admin (direct text replacement without AI)."""
+        try:
+            if admin_user_id not in self.correction_states:
+                await update.message.reply_text("❌ Нет активной корректировки")
+                return
+
+            correction_state = self.correction_states[admin_user_id]
+            message_id = correction_state['message_id']
+            original_message = correction_state['original_message']
+
+            logger.info(f"✍️ MANUAL_CORRECTION processing for message {message_id}")
+            logger.info(f"   📏 Original length: {len(original_message.ai_response)} chars")
+            logger.info(f"   📏 New length: {len(correction_text)} chars")
+
+            # Update the message in moderation queue with manual correction
+            message = self.moderation_queue.get_from_queue(message_id)
+            if message:
+                message.ai_response = correction_text
+                # Save the updated message to persistent storage
+                self.moderation_queue._save_data()
+                logger.info(f"💾 Updated message {message_id} with manual correction saved to queue")
+
+            # Create comprehensive keyboard with all options (as per requirements)
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Отправить", callback_data=f"send_{message_id}"),
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}")
+                ],
+                [
+                    InlineKeyboardButton("🤖 ИИ-редактирование", callback_data=f"edit_{message_id}"),
+                    InlineKeyboardButton("✍️ Ручное редактирование", callback_data=f"manual_edit_{message_id}")
+                ],
+                [
+                    InlineKeyboardButton("📋 Копировать", callback_data=f"copy_{message_id}"),
+                    InlineKeyboardButton("📖 Показать полное сообщение", callback_data=f"show_full_{message_id}")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            correction_result = (
+                f"✅ **Ручное редактирование завершено** для сообщения {message_id}\n\n"
+                f"👤 Пользователь: {message.username}\n"
+                f"💬 Вопрос: {message.original_message}\n\n"
+                f"📝 **Ваш исправленный текст:**\n{correction_text[:1000]}{'...' if len(correction_text) > 1000 else ''}\n\n"
+                f"🎯 **Выберите действие:**\n"
+                f"• Отправить пользователю\n"
+                f"• Продолжить редактирование (ИИ или ручное)\n"
+                f"• Отклонить сообщение"
+            )
+
+            await update.message.reply_text(correction_result, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✍️ Manual correction completed for message {message_id}")
+
+            # Clear correction state
+            del self.correction_states[admin_user_id]
+
+            # Clear edit timeout after correction completion
+            if self.admin_bot:
+                self.admin_bot.clear_edit_timeout(message_id)
+                logger.info(f"⏰ Cleared edit timeout for completed manual correction: {message_id}")
+            else:
+                logger.warning(f"⚠️ Could not clear edit timeout - admin_bot reference not available")
+
+        except Exception as e:
+            logger.error(f"❌ Error processing manual correction: {e}")
+            await update.message.reply_text("❌ Ошибка при обработке ручной корректировки")
+
     async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle voice messages for corrections using WhisperService."""
         try:
@@ -1578,9 +1828,14 @@ class AdminHandlers:
                 logger.info(f"❌ Correction cancelled for message {message_id} by admin {admin_user_id}")
                 return
 
-            # Process text as correction
+            # Process text as AI-powered correction
             if correction_state['step'] == 'waiting_correction':
                 await self.process_correction(admin_user_id, message_text, update)
+                return
+
+            # Process text as manual correction (direct text replacement)
+            if correction_state['step'] == 'waiting_manual_correction':
+                await self.process_manual_correction(admin_user_id, message_text, update)
                 return
 
 
@@ -2073,7 +2328,9 @@ class AdminBot:
             elif action == "reject":
                 status_text = f"❌ Отклонено админом @{admin_username} {get_moscow_time()}"
             elif action == "edit":
-                status_text = f"🔒 Редактируется админом @{admin_username}"
+                status_text = f"🔒 Редактируется админом @{admin_username} (ИИ-редактирование)"
+            elif action == "manual_edit":
+                status_text = f"✍️ Редактируется админом @{admin_username} (ручное редактирование)"
             else:
                 status_text = f"ℹ️ Обработано админом @{admin_username} {get_moscow_time()}"
 
