@@ -565,6 +565,14 @@ class AdminHandlers:
                 action = 'hide_full'
                 message_id = callback_data[10:]  # Remove 'hide_full_' prefix
                 logger.info(f"🔄 HIDE_FULL parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
+            elif callback_data.startswith('return_to_manual_edit_'):
+                action = 'return_to_manual_edit'
+                message_id = callback_data[23:]  # Remove 'return_to_manual_edit_' prefix
+                logger.info(f"🔄 RETURN_TO_MANUAL_EDIT parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
+            elif callback_data.startswith('return_to_edit_'):
+                action = 'return_to_edit'
+                message_id = callback_data[15:]  # Remove 'return_to_edit_' prefix
+                logger.info(f"🔄 RETURN_TO_EDIT parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
             elif callback_data.startswith('reset_question_'):
                 action = 'reset_question'
                 message_id = callback_data[15:]  # Remove 'reset_question_' prefix
@@ -601,6 +609,10 @@ class AdminHandlers:
                 await self.handle_show_full_callback(query, message_id)
             elif action == "hide_full":
                 await self.handle_hide_full_callback(query, message_id)
+            elif action == "return_to_manual_edit":
+                await self.handle_return_to_manual_edit_callback(query, message_id)
+            elif action == "return_to_edit":
+                await self.handle_return_to_edit_callback(query, message_id)
             elif action == "reset_question":
                 await self.handle_reset_question_callback(query, message_id)
             elif action == "clear_confirm_yes":
@@ -787,6 +799,7 @@ class AdminHandlers:
     async def handle_copy_callback(self, query, message_id: str):
         """Handle copy button callback - show AI response in code block for instant copying."""
         try:
+            admin_user_id = query.from_user.id
             message = self.moderation_queue.get_from_queue(message_id)
             if not message:
                 await query.answer("❌ Сообщение не найдено", show_alert=True)
@@ -807,15 +820,28 @@ class AdminHandlers:
                 f"👆 Нажмите на блок текста выше чтобы скопировать"
             )
 
-            # Create keyboard to return back to message
-            keyboard = [
-                [InlineKeyboardButton("🔙 Вернуться к сообщению", callback_data=f"hide_full_{message_id}")]
-            ]
+            # Check if user has active editing session to return to correct state
+            has_editing_session = admin_user_id in self.correction_states
+            editing_is_manual = has_editing_session and self.correction_states[admin_user_id].get('step') == 'waiting_manual_correction'
+
+            # Create keyboard to return back - either to editing or to message
+            if editing_is_manual:
+                keyboard = [
+                    [InlineKeyboardButton("🔙 Вернуться к ручному редактированию", callback_data=f"return_to_manual_edit_{message_id}")]
+                ]
+            elif has_editing_session:
+                keyboard = [
+                    [InlineKeyboardButton("🔙 Вернуться к ИИ редактированию", callback_data=f"return_to_edit_{message_id}")]
+                ]
+            else:
+                keyboard = [
+                    [InlineKeyboardButton("🔙 Вернуться к сообщению", callback_data=f"hide_full_{message_id}")]
+                ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await query.edit_message_text(copy_display, reply_markup=reply_markup, parse_mode='Markdown')
             await query.answer("📋 Нажмите на текст для копирования", show_alert=False)
-            logger.info(f"📋 Copy callback: showed AI response for message {message_id} to admin {query.from_user.id}")
+            logger.info(f"📋 Copy callback: showed AI response for message {message_id} to admin {admin_user_id}")
 
         except Exception as e:
             logger.error(f"❌ Error in copy callback: {e}")
@@ -1788,6 +1814,83 @@ class AdminHandlers:
         except Exception as e:
             logger.error(f"❌ Error processing manual correction: {e}")
             await update.message.reply_text("❌ Ошибка при обработке ручной корректировки")
+
+    async def handle_return_to_manual_edit_callback(self, query, message_id: str):
+        """Return from copy to manual editing mode."""
+        try:
+            admin_user_id = query.from_user.id
+            message = self.moderation_queue.get_from_queue(message_id)
+            if not message:
+                await query.answer("❌ Сообщение не найдено", show_alert=True)
+                return
+
+            chat_title = message.chat_title or "Личные сообщения"
+
+            edit_text = (
+                f"✍️ **Режим ручного редактирования активирован** для сообщения {message_id}\n\n"
+                f"📱 Чат: {chat_title}\n"
+                f"👤 Пользователь: {message.username}\n"
+                f"💬 Вопрос: {message.original_message}\n\n"
+                f"🤖 Текущий ответ ИИ:\n{message.ai_response}\n\n"
+                f"📝 **Отправьте ваш исправленный текст** в следующем сообщении.\n"
+                f"После отправки вы увидите превью с возможностью:\n"
+                f"• Отправить пользователю\n"
+                f"• Продолжить редактирование\n"
+                f"• Отклонить\n\n"
+                f"💡 **Подсказка:** используйте кнопку \"📋 Копировать\" для получения текста ИИ"
+            )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("📋 Копировать текст ИИ", callback_data=f"copy_{message_id}"),
+                    InlineKeyboardButton("❌ Отменить", callback_data=f"cancel_edit_{message_id}")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.edit_message_text(edit_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.answer("✍️ Возврат к ручному редактированию", show_alert=False)
+            logger.info(f"🔙 Returned to manual edit mode for message {message_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error returning to manual edit: {e}")
+            await query.answer("❌ Ошибка при возврате к редактированию", show_alert=True)
+
+    async def handle_return_to_edit_callback(self, query, message_id: str):
+        """Return from copy to AI editing mode."""
+        try:
+            admin_user_id = query.from_user.id
+            message = self.moderation_queue.get_from_queue(message_id)
+            if not message:
+                await query.answer("❌ Сообщение не найдено", show_alert=True)
+                return
+
+            chat_title = message.chat_title or "Личные сообщения"
+
+            edit_text = (
+                f"✏️ Режим корректировки активирован для сообщения {message_id}\n\n"
+                f"📱 Чат: {chat_title}\n"
+                f"👤 Пользователь: {message.username}\n"
+                f"💬 Вопрос: {message.original_message}\n\n"
+                f"🤖 Текущий ответ:\n{message.ai_response}\n\n"
+                f"📝 Отправьте текстовое или голосовое сообщение с корректировками.\n"
+                f"🎤 Голосовые сообщения будут обработаны через Whisper."
+            )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("❌ Отменить редактирование", callback_data=f"cancel_edit_{message_id}")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.edit_message_text(edit_text, reply_markup=reply_markup)
+            await query.answer("✏️ Возврат к ИИ редактированию", show_alert=False)
+            logger.info(f"🔙 Returned to AI edit mode for message {message_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error returning to AI edit: {e}")
+            await query.answer("❌ Ошибка при возврате к редактированию", show_alert=True)
 
     async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle voice messages for corrections using WhisperService."""

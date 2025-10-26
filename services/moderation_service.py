@@ -689,14 +689,18 @@ class ModerationQueue:
                 f"🤖 Ответ: {ai_response_preview}"
             )
 
-            # Create inline keyboard with send/reject/edit buttons and show full message button
+            # Create inline keyboard with ALL moderation buttons
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Отправить", callback_data=f"send_{message.message_id}"),
-                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message.message_id}"),
-                    InlineKeyboardButton("✏️ Редактировать", callback_data=f"edit_{message.message_id}")
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message.message_id}")
                 ],
                 [
+                    InlineKeyboardButton("🤖 ИИ-редактирование", callback_data=f"edit_{message.message_id}"),
+                    InlineKeyboardButton("✍️ Ручное редактирование", callback_data=f"manual_edit_{message.message_id}")
+                ],
+                [
+                    InlineKeyboardButton("📋 Копировать", callback_data=f"copy_{message.message_id}"),
                     InlineKeyboardButton("📖 Показать полное сообщение", callback_data=f"show_full_{message.message_id}")
                 ]
             ]
