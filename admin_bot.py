@@ -955,10 +955,16 @@ class AdminHandlers:
                 self.admin_bot.start_edit_timeout(message_id, admin_user_id, admin_username)
 
             # Set correction state for manual editing
+            # Save telegram chat_id and message_id to edit the message later instead of creating new one
+            telegram_chat_id = query.message.chat_id
+            telegram_msg_id = query.message.message_id
+
             self.correction_states[admin_user_id] = {
                 'message_id': message_id,
                 'step': 'waiting_manual_correction',  # Different step for manual editing
-                'original_message': message
+                'original_message': message,
+                'telegram_chat_id': telegram_chat_id,  # For editing the message later
+                'telegram_msg_id': telegram_msg_id  # For editing the message later
             }
 
             chat_title = message.chat_title or "Личные сообщения"
@@ -1805,8 +1811,31 @@ class AdminHandlers:
                 f"• Отклонить сообщение"
             )
 
-            await update.message.reply_text(correction_result, reply_markup=reply_markup, parse_mode='Markdown')
-            logger.info(f"✍️ Manual correction completed for message {message_id}")
+            # Edit the original message instead of creating a new one
+            telegram_chat_id = correction_state.get('telegram_chat_id')
+            telegram_msg_id = correction_state.get('telegram_msg_id')
+
+            if telegram_chat_id and telegram_msg_id:
+                # Edit existing message
+                await self.bot_application.bot.edit_message_text(
+                    chat_id=telegram_chat_id,
+                    message_id=telegram_msg_id,
+                    text=correction_result,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+                logger.info(f"✍️ Manual correction completed - edited existing message {telegram_msg_id} for {message_id}")
+
+                # Delete admin's text message with correction to keep chat clean
+                try:
+                    await update.message.delete()
+                    logger.info(f"🗑️ Deleted admin's correction text message")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not delete admin's text message: {e}")
+            else:
+                # Fallback to reply (shouldn't happen with new code)
+                await update.message.reply_text(correction_result, reply_markup=reply_markup, parse_mode='Markdown')
+                logger.warning(f"⚠️ Manual correction completed but telegram message IDs not found - created new message")
 
             # Clear correction state
             del self.correction_states[admin_user_id]
