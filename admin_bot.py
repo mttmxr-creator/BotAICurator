@@ -577,6 +577,10 @@ class AdminHandlers:
                 action = 'clear_confirm_no'
                 message_id = None  # No message ID for clear confirmation
                 logger.info(f"🔄 CLEAR_CONFIRM_NO parsed: callback_data='{callback_data}' → action='{action}'")
+            elif callback_data.startswith('copy_'):
+                action = 'copy'
+                message_id = callback_data[5:]  # Remove 'copy_' prefix
+                logger.info(f"🔄 COPY parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
             else:
                 action, message_id = callback_data.split('_', 1)
                 logger.info(f"🔄 REGULAR parsed: callback_data='{callback_data}' → action='{action}', message_id='{message_id}'")
@@ -781,28 +785,37 @@ class AdminHandlers:
                 await query.edit_message_text("❌ Ошибка при подготовке редактирования")
 
     async def handle_copy_callback(self, query, message_id: str):
-        """Handle copy button callback - send AI response text for easy copying."""
+        """Handle copy button callback - show AI response in code block for instant copying."""
         try:
             message = self.moderation_queue.get_from_queue(message_id)
             if not message:
                 await query.answer("❌ Сообщение не найдено", show_alert=True)
                 return
 
-            # Send the AI response as a new message for easy copying
-            copy_text = (
+            # Format text in code block for easy tap-to-copy in Telegram
+            # Telegram allows up to 4096 characters, code block up to ~3800 characters works well
+            max_copy_length = 3800
+            ai_response_text = message.ai_response
+
+            if len(ai_response_text) > max_copy_length:
+                ai_response_text = ai_response_text[:max_copy_length] + "\n\n... (обрезано)"
+
+            copy_display = (
                 f"📋 **Текст для копирования** (ID: {message_id})\n\n"
-                f"{message.ai_response}"
+                f"💡 *Нажмите на текст ниже для быстрого копирования*\n\n"
+                f"```\n{ai_response_text}\n```\n\n"
+                f"👆 Нажмите на блок текста выше чтобы скопировать"
             )
 
-            # Send as new message instead of editing
-            await self.bot_application.bot.send_message(
-                chat_id=query.from_user.id,
-                text=copy_text,
-                parse_mode='Markdown'
-            )
+            # Create keyboard to return back to message
+            keyboard = [
+                [InlineKeyboardButton("🔙 Вернуться к сообщению", callback_data=f"hide_full_{message_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.answer("📋 Текст отправлен отдельным сообщением для копирования", show_alert=False)
-            logger.info(f"📋 Copy callback: sent AI response for message {message_id} to admin {query.from_user.id}")
+            await query.edit_message_text(copy_display, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.answer("📋 Нажмите на текст для копирования", show_alert=False)
+            logger.info(f"📋 Copy callback: showed AI response for message {message_id} to admin {query.from_user.id}")
 
         except Exception as e:
             logger.error(f"❌ Error in copy callback: {e}")
@@ -1325,14 +1338,18 @@ class AdminHandlers:
                 truncate_at = max_length - 200  # Leave space for truncation message
                 full_text = full_text[:truncate_at] + "\n\n⚠️ (Сообщение обрезано из-за ограничений Telegram)"
 
-            # Create keyboard with moderation actions and hide button
+            # Create keyboard with ALL moderation actions and hide button
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Отправить", callback_data=f"send_{message_id}"),
-                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}"),
-                    InlineKeyboardButton("✏️ Редактировать", callback_data=f"edit_{message_id}")
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}")
                 ],
                 [
+                    InlineKeyboardButton("🤖 ИИ-редактирование", callback_data=f"edit_{message_id}"),
+                    InlineKeyboardButton("✍️ Ручное редактирование", callback_data=f"manual_edit_{message_id}")
+                ],
+                [
+                    InlineKeyboardButton("📋 Копировать", callback_data=f"copy_{message_id}"),
                     InlineKeyboardButton("🔙 Скрыть полное сообщение", callback_data=f"hide_full_{message_id}")
                 ]
             ]
@@ -1381,14 +1398,18 @@ class AdminHandlers:
                 f"🤖 Ответ: {ai_response_preview}"
             )
 
-            # Create keyboard with moderation actions and show full button
+            # Create keyboard with ALL moderation actions and show full button
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Отправить", callback_data=f"send_{message_id}"),
-                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}"),
-                    InlineKeyboardButton("✏️ Редактировать", callback_data=f"edit_{message_id}")
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{message_id}")
                 ],
                 [
+                    InlineKeyboardButton("🤖 ИИ-редактирование", callback_data=f"edit_{message_id}"),
+                    InlineKeyboardButton("✍️ Ручное редактирование", callback_data=f"manual_edit_{message_id}")
+                ],
+                [
+                    InlineKeyboardButton("📋 Копировать", callback_data=f"copy_{message_id}"),
                     InlineKeyboardButton("📖 Показать полное сообщение", callback_data=f"show_full_{message_id}")
                 ]
             ]
