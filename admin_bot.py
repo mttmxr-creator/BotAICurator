@@ -951,10 +951,11 @@ class AdminHandlers:
                 f"💡 **Подсказка:** используйте кнопку \"📋 Копировать\" для получения текста ИИ"
             )
 
-            # Create cancel keyboard
+            # Create keyboard with copy and cancel buttons
             keyboard = [
                 [
-                    InlineKeyboardButton("❌ Отменить редактирование", callback_data=f"cancel_edit_{message_id}")
+                    InlineKeyboardButton("📋 Копировать текст ИИ", callback_data=f"copy_{message_id}"),
+                    InlineKeyboardButton("❌ Отменить", callback_data=f"cancel_edit_{message_id}")
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
