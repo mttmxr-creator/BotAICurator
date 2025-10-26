@@ -229,6 +229,8 @@ class ModerationMessage:
         data.setdefault('editing_admin_name', None)
         data.setdefault('editing_started_at', None)
         data.setdefault('chat_title', None)  # For backward compatibility
+        data.setdefault('reminder_count', 0)  # For backward compatibility with SmartReminder
+        data.setdefault('last_reminder_time', None)  # For backward compatibility with SmartReminder
         return cls(**data)
 
     def is_expired(self) -> bool:
