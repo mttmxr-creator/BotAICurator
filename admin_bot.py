@@ -791,9 +791,12 @@ class AdminHandlers:
                     continue
 
                 try:
+                    chat_title = message.chat_title or "Личные сообщения"
+
                     edit_notification = (
                         f"🔔 **Уведомление о начале редактирования**\n\n"
                         f"📝 Сообщение: {message_id}\n"
+                        f"📱 Чат: {chat_title}\n"
                         f"👤 Админ: @{admin_username}\n"
                         f"🕐 Начато: {moscow_time}\n"
                         f"💬 Вопрос: {message.original_message[:100]}{'...' if len(message.original_message) > 100 else ''}\n\n"
@@ -1006,9 +1009,12 @@ class AdminHandlers:
                     continue
 
                 try:
+                    chat_title = message.chat_title or "Личные сообщения"
+
                     edit_notification = (
                         f"🔔 **Уведомление о начале ручного редактирования**\n\n"
                         f"📝 Сообщение: {message_id}\n"
+                        f"📱 Чат: {chat_title}\n"
                         f"👤 Админ: @{admin_username}\n"
                         f"🕐 Начато: {moscow_time}\n"
                         f"💬 Вопрос: {message.original_message[:100]}{'...' if len(message.original_message) > 100 else ''}\n\n"
