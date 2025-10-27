@@ -679,10 +679,13 @@ class ModerationQueue:
             text_preview = message.original_message[:100] + "..." if len(message.original_message) > 100 else message.original_message
             ai_response_preview = message.ai_response[:100] + "..." if len(message.ai_response) > 100 else message.ai_response
 
+            chat_title = message.chat_title or "Личные сообщения"
+
             admin_text = (
                 f"🔔 Новое сообщение на модерации\n"
                 f"📊 В очереди: {metadata.get('queue_size', '?')}\n\n"
                 f"🆔 ID: {message.message_id}\n"
+                f"📱 Чат: {chat_title}\n"
                 f"👤 Пользователь: {username}\n"
                 f"⏰ Время: {moscow_time}\n"
                 f"💬 Вопрос: {text_preview}\n"

@@ -1071,9 +1071,13 @@ class AdminHandlers:
                                 safe_message += '...'
                             safe_message = escape_markdown_v2(safe_message)
 
+                            chat_title = approved_message.chat_title or "Личные сообщения"
+                            safe_chat_title = escape_markdown_v2(chat_title)
+
                             send_notification = (
                                 f"🔔 **Уведомление об отправке сообщения**\n\n"
                                 f"📝 Сообщение: {escape_markdown_v2(message_id)}\n"
+                                f"📱 Чат: {safe_chat_title}\n"
                                 f"👤 Админ: @{escape_markdown_v2(admin_username)}\n"
                                 f"👥 Пользователь: {escape_markdown_v2(approved_message.username)}\n"
                                 f"🕐 Отправлено: {moscow_time}\n"
