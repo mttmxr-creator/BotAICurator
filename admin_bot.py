@@ -110,6 +110,7 @@ class AdminHandlers:
             "/pending - список ожидающих сообщений\n"
             "/stats - статистика модерации\n"
             "/clear - очистить очередь модерации\n"
+            "/reset - сбросить свои сессии редактирования\n"
             "/notification_off - отключить напоминания\n"
             "/notification_on - включить напоминания"
         )
@@ -480,6 +481,85 @@ class AdminHandlers:
         except Exception as e:
             logger.error(f"❌ Error in clear command: {e}")
             await update.message.reply_text(f"❌ Ошибка при показе подтверждения очистки: {e}")
+
+    async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Reset admin's personal editing sessions and clear stuck states."""
+        try:
+            # Check if user is authorized admin
+            admin_user_id = update.effective_user.id
+            if not Config.is_admin(admin_user_id):
+                await update.message.reply_text("🚫 У вас нет прав администратора")
+                return
+
+            admin_username = update.effective_user.username or update.effective_user.first_name
+            moscow_time = get_moscow_time()
+
+            # Count sessions before reset
+            had_active_session = admin_user_id in self.correction_states
+            session_info = ""
+
+            if had_active_session:
+                session_data = self.correction_states[admin_user_id]
+                message_id = session_data.get('message_id', 'unknown')
+                step = session_data.get('step', 'unknown')
+                session_info = f"\n📝 Активная сессия: {message_id} ({step})"
+
+            # Clear admin's correction state
+            if admin_user_id in self.correction_states:
+                message_id = self.correction_states[admin_user_id].get('message_id')
+                del self.correction_states[admin_user_id]
+                logger.info(f"🔄 RESET: Cleared correction_state for admin {admin_user_id} (message: {message_id})")
+
+            # Remove editing locks from messages where this admin is the editor
+            released_messages = []
+            for msg_id, message in self.moderation_queue.pending_messages.items():
+                if message.editing_admin_id == admin_user_id:
+                    message.editing_admin_id = None
+                    message.editing_admin_name = None
+                    message.editing_started_at = 0
+                    released_messages.append(msg_id)
+                    logger.info(f"🔓 RESET: Released editing lock on message {msg_id}")
+
+            # Clear edit timeouts for this admin
+            cleared_timeouts = []
+            if self.admin_bot:
+                for msg_id in list(self.admin_bot.edit_timeouts.keys()):
+                    timeout_data = self.admin_bot.edit_timeouts[msg_id]
+                    if timeout_data.get('admin_id') == admin_user_id:
+                        self.admin_bot.clear_edit_timeout(msg_id)
+                        cleared_timeouts.append(msg_id)
+                        logger.info(f"⏰ RESET: Cleared edit timeout for message {msg_id}")
+
+            # Save changes to persistent storage
+            self.moderation_queue._save_data()
+
+            # Prepare result message
+            result_parts = [
+                f"✅ **Ваши сессии редактирования сброшены** {moscow_time}\n",
+                f"👤 Админ: @{admin_username}\n"
+            ]
+
+            if had_active_session:
+                result_parts.append(f"🧹 Очищена активная сессия редактирования{session_info}\n")
+            else:
+                result_parts.append("ℹ️ У вас не было активных сессий редактирования\n")
+
+            if released_messages:
+                result_parts.append(f"🔓 Снята блокировка с сообщений: {', '.join(released_messages)}\n")
+
+            if cleared_timeouts:
+                result_parts.append(f"⏰ Очищены таймауты: {', '.join(cleared_timeouts)}\n")
+
+            result_parts.append("\n💡 Вы можете снова начать редактирование любого сообщения")
+
+            result_text = ''.join(result_parts)
+
+            await update.message.reply_text(result_text, parse_mode='Markdown')
+            logger.info(f"🔄 RESET completed for admin {admin_username} (ID: {admin_user_id})")
+
+        except Exception as e:
+            logger.error(f"❌ Error in reset command: {e}")
+            await update.message.reply_text(f"❌ Ошибка при сбросе сессий: {e}")
 
     async def notification_off_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Turn off notifications for the requesting admin."""
@@ -2101,6 +2181,9 @@ class AdminBot:
         )
         self.application.add_handler(
             CommandHandler("clear", self.admin_handlers.clear_command)
+        )
+        self.application.add_handler(
+            CommandHandler("reset", self.admin_handlers.reset_command)
         )
 
         self.application.add_handler(
