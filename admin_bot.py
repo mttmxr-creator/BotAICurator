@@ -530,6 +530,15 @@ class AdminHandlers:
                         cleared_timeouts.append(msg_id)
                         logger.info(f"⏰ RESET: Cleared edit timeout for message {msg_id}")
 
+            # Update admin UI for released messages to show they're available for editing
+            if self.admin_bot and released_messages:
+                for msg_id in released_messages:
+                    try:
+                        await self.admin_bot.update_all_admin_messages(msg_id, "pending")
+                        logger.info(f"🔄 RESET: Updated admin UI for released message {msg_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ RESET: Could not update admin UI for message {msg_id}: {e}")
+
             # Save changes to persistent storage
             self.moderation_queue._save_data()
 
